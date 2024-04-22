@@ -1,6 +1,6 @@
 # Envs
 
-configs is a light weight library that helps with reading environment variables it helps with loading env values
+envs is a light weight library that helps with reading environment variables it helps with loading env values
 directly into a struct or Just simply provides some generic GetEnv interface
 
 ## How to Use?
