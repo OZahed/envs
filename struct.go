@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	r "reflect"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -23,10 +23,10 @@ var (
 
 	stringSeparators = []string{",", ";", ";", "-", " "}
 
-	EnvParserType = r.TypeOf((*EnvParser)(nil)).Elem()
-	timeType      = r.TypeOf(time.Time{})
-	durationType  = r.TypeOf(time.Duration(0))
-	urlType       = r.TypeOf(&url.URL{})
+	EnvParserType = reflect.TypeOf((*EnvParser)(nil)).Elem()
+	timeType      = reflect.TypeOf(time.Time{})
+	durationType  = reflect.TypeOf(time.Duration(0))
+	urlType       = reflect.TypeOf(&url.URL{})
 )
 
 var (
@@ -82,27 +82,27 @@ func NewParser(keyFunc KeyFunc, valueFunc ValueFunc) *Parser {
 // ParseStruct is the main entry for parsing environment variables into a struct.
 //
 //nolint:funlen
-func (m *Parser) ParseStruct(dest interface{}, prefix string) (err error) {
-	dst := r.ValueOf(dest)
+func (m *Parser) ParseStruct(dest any, prefix string) (err error) {
+	dst := reflect.ValueOf(dest)
 	valueType := dst.Type()
 
-	if valueType.Kind() != r.Pointer {
-		return fmt.Errorf("Kind %s is not a pointer", valueType.Kind())
+	if valueType.Kind() != reflect.Pointer {
+		return fmt.Errorf("kind %s is not a pointer", valueType.Kind())
 	}
 
 	if dst.IsNil() {
-		dst.Set(r.New(dst.Type().Elem()))
+		dst.Set(reflect.New(dst.Type().Elem()))
 	}
 
 	elm := valueType.Elem()
-	if elm.Kind() != r.Struct {
+	if elm.Kind() != reflect.Struct {
 		return fmt.Errorf("destination is of type %s and not struct", elm.Kind())
 	}
 
 	valueType = valueType.Elem()
 	dst = dst.Elem()
 
-	for i := 0; i < valueType.NumField(); i++ {
+	for i := range valueType.NumField() {
 		fieldValue := dst.Field(i)
 		fieldType := valueType.Field(i)
 
@@ -125,7 +125,7 @@ func (m *Parser) ParseStruct(dest interface{}, prefix string) (err error) {
 		// KeyBuilder removes
 		strValues := m.Get(m.BuildKey(key), def)
 
-		if strValues == "" && fieldType.Type.Kind() != r.Struct {
+		if strValues == "" && fieldType.Type.Kind() != reflect.Struct {
 			continue
 		}
 
@@ -140,12 +140,12 @@ func (m *Parser) ParseStruct(dest interface{}, prefix string) (err error) {
 
 // ParseValue turns parses string values for specific types defined in reflect.Value
 // key is required to append new key to existing key for nested structs.
-func (m *Parser) ParseValue(reflectValue r.Value, strValue, prefix, key string) error {
+func (m *Parser) ParseValue(reflectValue reflect.Value, strValue, prefix, key string) error {
 	if !reflectValue.CanSet() {
 		return nil
 	}
 
-	if reflectValue.Kind() == r.Func {
+	if reflectValue.Kind() == reflect.Func {
 		return nil
 	}
 
@@ -156,7 +156,7 @@ func (m *Parser) ParseValue(reflectValue r.Value, strValue, prefix, key string) 
 		if err != nil {
 			return err
 		}
-		reflectValue.Set(r.ValueOf(t))
+		reflectValue.Set(reflect.ValueOf(t))
 		return nil
 	case urlType:
 		u, err := url.Parse(strValue)
@@ -164,7 +164,7 @@ func (m *Parser) ParseValue(reflectValue r.Value, strValue, prefix, key string) 
 			return err
 		}
 
-		reflectValue.Set(r.ValueOf(u))
+		reflectValue.Set(reflect.ValueOf(u))
 		return nil
 	case durationType:
 		d, err := time.ParseDuration(strValue)
@@ -172,45 +172,45 @@ func (m *Parser) ParseValue(reflectValue r.Value, strValue, prefix, key string) 
 			return err
 		}
 
-		reflectValue.Set(r.ValueOf(d))
+		reflectValue.Set(reflect.ValueOf(d))
 		return nil
 	}
 
 	// Checking for built int types
 	switch reflectValue.Kind() {
-	case r.String:
+	case reflect.String:
 		reflectValue.SetString(strValue)
-	case r.Int, r.Int8, r.Int32, r.Int16, r.Int64:
+	case reflect.Int, reflect.Int8, reflect.Int32, reflect.Int16, reflect.Int64:
 		n, err := strconv.ParseInt(strValue, 10, 64)
 		if err != nil {
 			return err
 		}
 		reflectValue.SetInt(n)
-	case r.Uint, r.Uint8, r.Uint16, r.Uint32, r.Uint64, r.Uintptr:
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
 		n, err := strconv.ParseUint(strValue, 10, 64)
 		if err != nil {
 			return err
 		}
 
 		reflectValue.SetUint(n)
-	case r.Float32, r.Float64:
+	case reflect.Float32, reflect.Float64:
 		f, err := strconv.ParseFloat(strValue, 64)
 		if err != nil {
 			return err
 		}
 		reflectValue.SetFloat(f)
-	case r.Bool:
+	case reflect.Bool:
 		b, err := strconv.ParseBool(strValue)
 		if err != nil {
 			return err
 		}
 
 		reflectValue.SetBool(b)
-	case r.Map:
+	case reflect.Map:
 		return m.parseMap(reflectValue, strValue)
-	case r.Slice:
+	case reflect.Slice:
 		return m.parseArray(strValue, reflectValue, key)
-	case r.Struct:
+	case reflect.Struct:
 		// The ParseEnv should be on pointer
 		ptr := reflectValue.Addr()
 		if ptr.Type().Implements(EnvParserType) {
@@ -219,7 +219,7 @@ func (m *Parser) ParseValue(reflectValue r.Value, strValue, prefix, key string) 
 			parser := ptr.MethodByName(ParseEnvFunc)
 			if parser.IsValid() {
 
-				callResult := parser.Call([]r.Value{r.ValueOf(key)})
+				callResult := parser.Call([]reflect.Value{reflect.ValueOf(key)})
 
 				e := callResult[0].Interface()
 				if e == nil {
@@ -230,7 +230,7 @@ func (m *Parser) ParseValue(reflectValue r.Value, strValue, prefix, key string) 
 			}
 		}
 
-		if !reflectValue.CanAddr() || reflectValue.Type() == r.TypeOf(struct{}{}) {
+		if !reflectValue.CanAddr() || reflectValue.Type() == reflect.TypeOf(struct{}{}) {
 			return nil
 		}
 
@@ -242,14 +242,14 @@ func (m *Parser) ParseValue(reflectValue r.Value, strValue, prefix, key string) 
 
 // parseMap Turns strings like: key1:val1,key2:val2 into map[K]V
 // Only string and int are supported for now.
-func (m *Parser) parseMap(value r.Value, str string) (err error) {
-	if value.Type().Kind() != r.Map {
+func (m *Parser) parseMap(value reflect.Value, str string) (err error) {
+	if value.Type().Kind() != reflect.Map {
 		return fmt.Errorf("%s is not a map", value.Type().Name())
 	}
 
 	keyType := value.Type().Key()
 	valueType := value.Type().Elem()
-	value.Set(r.MakeMap(value.Type()))
+	value.Set(reflect.MakeMap(value.Type()))
 
 	kv := splitStr(str)
 	for _, pair := range kv {
@@ -260,8 +260,8 @@ func (m *Parser) parseMap(value r.Value, str string) (err error) {
 
 		keyStr := strings.TrimSpace(splt[0])
 		valStr := strings.TrimSpace(splt[1])
-		k := r.New(keyType).Elem()
-		v := r.New(valueType).Elem()
+		k := reflect.New(keyType).Elem()
+		v := reflect.New(valueType).Elem()
 
 		if err = m.ParseValue(k, keyStr, "", ""); err != nil {
 			return fmt.Errorf("%s can not be parsed as %s", keyStr, k.Kind())
@@ -276,7 +276,7 @@ func (m *Parser) parseMap(value r.Value, str string) (err error) {
 	return nil
 }
 
-func (m *Parser) parseArray(value string, fieldValue r.Value, currentKey string) error {
+func (m *Parser) parseArray(value string, fieldValue reflect.Value, currentKey string) error {
 	splits := splitStr(value)
 
 	if len(splits) > fieldValue.Len() {
